@@ -21,13 +21,15 @@ Virtual Mouse](https://doi.org/10.1109/ICASERT.2019.8934612). It is also about u
 
 ## Color-Based Finger Tracking
 
-The first step of the implementation was detecting the colored marker in the user's finger, following the approach described in the selected paper. 
+The first step of the implementation was detecting the colored marker in the user's finger, following the approach described in the selected paper. This approach allows the application to run in real time with low computational requirements and only using a standard webcam and a tracker that can be just a piece of colored paper, a sticker or even painting your finger
 
-We use the OpenCV library for image acquisition and processing, since it provides all the needed functions for real-time image processing, object detection and tracking. Each frame captured by the webcam is mirrored horizontally to create a more natural interaction, where moving the finger to the right also moves the cursor to the right. The frame is then converted from the BGR color space to HSV. We chose the HSV color space because it separates color information from brightness, making a more robust and reliable color segmentation.
+We use the OpenCV library for image acquisition and processing, since it provides the functions for real-time image processing, object detection and tracking that are required for the implementation. Using these built-in functions reduced development time while ensuring good real-time performance.
+
+Each frame captured by the webcam is mirrored horizontally to create a more natural interaction, where moving the finger to the right also moves the cursor to the right. The frame is then converted from the BGR color space to HSV. We chose the HSV color space because it separates color information from brightness, making a more robust and reliable color segmentation.
 
 After the conversion, a binary mask is generated using a HSV range that corresponds to the color of the marker. Pixels within the selected range appear white in the mask, while all other pixels are black. 
 
-Once the mask has been generated, OpenCV's contour detection is used to identify the largest object, which is assumed to be the colored marker. Small contours below a predefined area threshold are ignored to reduce false detections. 
+Once the mask has been generated, OpenCV's contour detection is used to identify the largest object, which is assumed to be the colored marker, since the marker is expected to be the most prominent object of the selected colot. Small contours below a predefined area threshold are ignored to reduce false detections and improve stability of the tracking by eliminating isolated pixels created by image noise. 
 
 A bounding box is then computed around the selected contour. This rectangle provides not only a visual indication of the tracked finger but it also allows the position of the marker to be easily determined. The center point of the marker is calculated using the top-left coordinates and the dimensions of the bounding box. The center point, displayed as a red circle, will later be used to control the mouse cursor.
 
@@ -45,7 +47,9 @@ We chose a manual calibration over other methods because giving the user direct 
 
 ## User Interface
 
-To make the application easier to use we implemented a menu system to allow the user to switch between the different modes. When first opening the application the main menu is shown, here the user has multiple options:
+To make the application easier to use and to separate calibration from tracking, we implemented a menu system to allow the user to switch between the different modes. This prevents accidental changes to the HSV thresholds and provides a clear workflow for the user. 
+
+When first opening the application the main menu is shown, here the user has multiple options. Keyboard controls were chosen because they are easy to implement and are efficient.
 - C: enter calibration mode
 - S: start mouse tracking mode
 - Q: quit the application
