@@ -1,4 +1,4 @@
-# Paper Selection:
+# Paper Selection
 
 ## SoundWave
 
@@ -14,3 +14,47 @@ Free-Space Interactions](http://dx.doi.org/10.1145/2818346.2820752). The paper m
 
 This is why we decided to implement the system proposed by the paper [Design and Development of Hand Gesture Based
 Virtual Mouse](https://doi.org/10.1109/ICASERT.2019.8934612). It is also about using hand gestures to control the mouse, but it makes use of colored finger tips to detect a gesture, which doesn't require some special kind of hardware. Since the paper works a lot with the openCV library, which we already used a lot, the project is very doable in the given time.
+
+<br>
+
+# Implementation
+
+## Color-Based Finger Tracking
+
+The first step of the implementation was detecting the colored marker in the user's finger, following the approach described in the selected paper. 
+
+We use the OpenCV library for image acquisition and processing, since it provides all the needed functions for real-time image processing, object detection and tracking. Each frame captured by the webcam is mirrored horizontally to create a more natural interaction, where moving the finger to the right also moves the cursor to the right. The frame is then converted from the BGR color space to HSV. We chose the HSV color space because it separates color information from brightness, making a more robust and reliable color segmentation.
+
+After the conversion, a binary mask is generated using a HSV range that corresponds to the color of the marker. Pixels within the selected range appear white in the mask, while all other pixels are black. 
+
+Once the mask has been generated, OpenCV's contour detection is used to identify the largest object, which is assumed to be the colored marker. Small contours below a predefined area threshold are ignored to reduce false detections. 
+
+A bounding box is then computed around the selected contour. This rectangle provides not only a visual indication of the tracked finger but it also allows the position of the marker to be easily determined. The center point of the marker is calculated using the top-left coordinates and the dimensions of the bounding box. The center point, displayed as a red circle, will later be used to control the mouse cursor.
+
+## Calibration
+
+We chose a standard HSV threshold for a green marker in well lit conditions but during testing, it quickly became apparent that using fixed HSV values was unreliable since the lighting conditions and camera quality can change the appearance of the marker resulting in inaccurate and unstable tracking. 
+
+To adress this issue we created a calibration mode.
+
+The calibration mode allows the user to determine the HSV thresholds appropiate for the lighting conditions and the color of the marker bieng used. The calibration window shows 6 sliders that control the minimum and maximun values for hue, saturation and value, as well as a live binary mask of th camera feed. The user adjusts these sliders until only the desired marker appears white and the rest of the image stays black.
+
+Once the calibration is accepted, the selected HSV values are stored and used for marker tracking.
+
+We chose a manual calibration over other methods because giving the user direct control over the HSV thresholds created a more reliable tracking across different cameras and lighting conditions and it was also simpler to implement. This method also allows the adaptation of the application for different color markers without modifying the source code.
+
+## User Interface
+
+To make the application easier to use we implemented a menu system to allow the user to switch between the different modes. When first opening the application the main menu is shown, here the user has multiple options:
+- C: enter calibration mode
+- S: start mouse tracking mode
+- Q: quit the application
+
+Inside the calibration mode, the user has two options:
+- Enter: save the calibrated HSV values
+- ESC: cancel calibration and return to menu
+
+In the mouse tracking mode, the user can also use ESC to return to menu.
+Pressing Q at any time closes the application.
+
+
