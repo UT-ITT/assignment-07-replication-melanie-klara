@@ -38,6 +38,17 @@ pinch_original_area = None
 last_distance = 9999
 last_midpoint = (0, 0)
 
+last_scroll_y = None
+SCROLL_THRESHOLD = 20
+SCROLL_AMOUNT = 10
+
+smooth_x = 0
+smooth_y = 0
+ALPHA = 0.25
+
+MARGIN_X = 120
+MARGIN_Y = 100
+
 # get the marker info 
 def marker_info(contour):
     x, y, w, h = cv2.boundingRect(contour)
@@ -51,16 +62,23 @@ def marker_info(contour):
         "bbox_area": w * h,
     }
 
-# scales the position from the frame size to the monitor size
-def to_screen(px, py, frame_w, frame_h):
-    sx = int(px * screen_w / frame_w)
-    sy = int(py * screen_h / frame_h)
-    return sx, sy
+# scales the position from the margin size to the monitor size
+def to_screen(px, py, left, right, top, bottom):
+
+    px = np.clip(px, left, right)
+    py = np.clip(py, top, bottom)
+
+    sx = np.interp(px, [left, right], [0, screen_w])
+    sy = np.interp(py, [top, bottom], [0, screen_h])
+
+    return int(sx), int(sy)
+
 
 def clear_pinch_timing():
     global pinch_start_time, pinch_original_area
     pinch_start_time = None
     pinch_original_area = None
+
 
 def finalize_pinch():
     global pinch_ready
@@ -147,8 +165,6 @@ while True:
             2
         )
 
-        #cv2.imshow("Gesture Mouse", frame)
-
         if key == ord('c'):
             mode = "calibration"
 
@@ -183,7 +199,6 @@ while True:
 
         vmin = cv2.getTrackbarPos("V Min", "Calibration")
         vmax = cv2.getTrackbarPos("V Max", "Calibration")
-
 
         lower = np.array([hmin, smin, vmin])
         upper = np.array([hmax, smax, vmax])
@@ -237,11 +252,31 @@ while True:
     elif mode == "mouse":
         frame_h, frame_w = frame.shape[:2]
 
+        track_left = int(frame_w * 0.15)
+        track_right = int(frame_w * 0.85)
+
+        track_top = int(frame_h * 0.30)
+        track_bottom = int(frame_h * 0.95)
+
         mask = cv2.inRange(hsv, lower_color, upper_color)
+        mask = cv2.GaussianBlur(mask, (5,5), 0)
 
         kernel = np.ones((5, 5), np.uint8)
+
+        mask = cv2.erode(mask, kernel, iterations=1)
+        mask = cv2.dilate(mask, kernel, iterations=2)
+        
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        #margin
+        cv2.rectangle(
+            frame,
+            (track_left, track_top),
+            (track_right, track_bottom),
+            (255, 0, 0),
+            2
+        )
 
         # find contours 
         contours, _ = cv2.findContours(
@@ -294,8 +329,20 @@ while True:
             mid_x = (m1["cx"] + m2["cx"]) // 2
             mid_y = (m1["cy"] + m2["cy"]) // 2
 
-            sx, sy = to_screen(mid_x, mid_y, frame_w, frame_h)
-            mouse.position = (sx, sy)
+            sx, sy = to_screen(
+                mid_x, 
+                mid_y,
+                track_left, 
+                track_right,
+                track_top, 
+                track_bottom
+            )
+            
+            # smooth
+            smooth_x = smooth_x + ALPHA * (sx - smooth_x)
+            smooth_y = smooth_y + ALPHA * (sy - smooth_y)
+
+            mouse.position = (int(smooth_x), int(smooth_y))
 
             # line between two bounding boxes
             cv2.line(frame, (m1["cx"], m1["cy"]), (m2["cx"], m2["cy"]), (255, 0, 0), 2)
@@ -304,6 +351,28 @@ while True:
 
             last_distance = np.hypot(m1["cx"] - m2["cx"], m1["cy"] - m2["cy"])
             last_midpoint = (mid_x, mid_y)
+
+        # 3 markers detected
+        elif len(markers) == 3:
+            new_state = "scroll"
+
+            #midpoint
+            mid_x = sum(m["cx"] for m in markers) // 3
+            mid_y = sum(m["cy"] for m in markers) // 3
+
+            cv2.circle(frame, (mid_x, mid_y), 7, (255,255,0), -1)
+
+            # scroll mode
+            if prev_state != "scroll":
+                last_scroll_y = mid_y
+
+            dy = mid_y - last_scroll_y
+
+            # scroll
+            if abs(dy) > SCROLL_THRESHOLD:
+                mouse.scroll(0, int(-dy / SCROLL_AMOUNT))
+                last_scroll_y = mid_y
+
 
         # only one marker is detected
         elif len(markers) == 1:
@@ -342,6 +411,9 @@ while True:
             clear_pinch_timing()
 
         gesture_state = new_state
+
+        if gesture_state != "scroll":
+            last_scroll_y = None
 
         if prev_state == "pinched" and gesture_state != "pinched":
             finalize_pinch()
