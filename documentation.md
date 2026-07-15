@@ -31,7 +31,7 @@ After the conversion, a binary mask is generated using an HSV range that corresp
 
 Once the mask has been generated, OpenCV's contour detection is used to identify the largest object, which is assumed to be the colored marker, since the marker is expected to be the most prominent object of the selected color. Small contours below a predefined area threshold are ignored to reduce false detections and improve stability of the tracking by eliminating isolated pixels created by image noise.
 
-Since the paper uses different gestures based on one, two or three markers, we had to extend the code and could not just take the marker with the largest contour. Instead, we use all detected contours that have some minimum area and store them in a list of markers.
+Since the paper uses different gestures based on one, two or three markers, we extended the code to detect muliple markers simultaneously. Instead of selecting only the largest contour, we use all detected contours that exceed minimum area threshold and store them in a list of markers. The markers are sorted from left to right to ensure a consistent ordering, this simplifies gesture recognition since each gestures can be identified basedon the number and relative positions of the detected markers.
 
 A bounding box is then computed around the selected contours. This rectangle provides not only a visual indication of the tracked fingers, but it also allows the position of the markers to be easily determined. The center points of the markers are calculated using the top-left coordinates and the dimensions of the bounding boxes. Then, a line is drawn between those center points. The middle of this line is calculated using linear interpolation. This middle point is later used to control the mouse.
 
@@ -65,14 +65,33 @@ Inside the calibration mode, the user has two options:
 In the mouse tracking mode, the user can also use ESC to return to menu.
 Pressing Q at any time closes the application.
 
+## Cursor Mapping & Preprocessing
+
+The detected marker positions have to be converted from camera to screen coordinates to be able to be used to control the mouse. The cursor movement is based on the midpoint between two detected markers so first we calculate this midpoint. We then map it to the monitor resolution using linear interpolation.
+
+At first we mapped the camera coordinates directly to the full screen but during testing we realized that moving your hand to the borders of the camera could be uncomfortable and the tracking would also become unstable.
+
+To solve this and improve usability, we added a tracking margin. Instead of using the entire camera image, only a region marked by blue rectangle is considered for cursor movement. Positions outside of this region are clamped to the nearest boundary, allowing the user to reach the whole screen without having to move their hand far to either side.
+
+Durging testing, the cursor had noticeable jitter, to improve this we added exponential smoothing to the cursor coordinates. After some testing we settled on a value of 0.25, with this value we got a good balance between jitter stability and responsive cursor movement.
+
+To further improve the smoothnes and quality of the tracking, we added some image preprocessing. Before contour detection, a gaussian blur, erosion and dilation are applied to the mask to reduce high frequency noise and remove small artifacts.
+
 ## State Machine and Gestures
 
-A state machine is the core of the gesture control system, managing transitions between five different states:
+A state machine is the core of the gesture control system, managing transitions between six different states:
 
 - idle: no markers are visible in the field of view and the system remains inactive.
 - two_separate: The camera detects two separate markers. The system calculates the mathematical midpoint between them and maps it to screen coordinates to move the cursor smoothly.
 - single_marker: Only one marker is detected. The resulting action depends on the previous state. Either a pinch is triggered or a right click is performed.
 - pinched: The fingers merge to initiate a click event. If the pinch is held for at least five seconds, a double left click is triggered, otherwise a single left click is triggered.
+- scroll: Three markers are detected. The midpoint of all three markers is calculated and vertical movement of this point is translated into mouse wheel scrolling.
+
+## Scrolling Interaction
+
+The paper uses the gesture with three visible markers to scrolling, where if the markers move downwards the system will scroll down and viceversa. 
+
+We considered implementing this gesture using a touchscreen-style interaction, where the page would follow the user's finger movement directly since this way feels more natural. However, we decided to emulate the behavior of a standard desktop mouse wheel instead because this approach is consistent with the original paper and matches the expectation of creating a virtual mouse that behaves exactly like its original counterpart.
 
 ## Gesture Differentiation
 
@@ -89,3 +108,20 @@ Initially, the system triggered a pinch whenever the count dropped to one marker
 To not immediately trigger a pinch when two fingers are close, we implemented a feature proposed by the paper: We only trigger the pinch if the merged bounding box area becomes 20% of the original creation time bounding box area. However, during testing, using this feature felt unintuitive, and it was nearly impossible to shrink the size of the bounding box to only 20% of the original size. So, we decided to remove this functionality, so that the pinch is triggered as soon as the bounding boxes of the two fingers are merged. This proved to be much more intuitive.
 
 The click duration threshold was also adjusted during testing. Requiring the user to hold a pinch for 5 seconds to perform a double click felt too slow and disrupted the workflow. This delay was significantly reduced to 1 second instead of 5, to create a much faster and more natural double-click gesture.
+
+## Conclusion
+
+The final implementation successfully reproduces the main concepts presented in [Design and Development of Hand Gesture Based
+Virtual Mouse](https://doi.org/10.1109/ICASERT.2019.8934612). It supports real-time cursor movement, left and right mouse clicks, double click, and scrolling using colored finger markers and a standard webcam. We introduced several improvements beyond the original implementation to increase robustnes and usability, including a manual calibration mode, cursor smoothing, a tracking margin, and additional geometric validation for gesture recognition.
+
+One of the challenges encountered during development was achieving reliable detection under different lighting conditions. Initially using fixed HSV thresholds produced inconsistent results. This issue was addressed by implementing a manual calibration mode allowing the user to adapt the HSV values to their current lighting conditions and the color of the marker.
+
+Another challenge was distinguishing between gestures that produced the same number of detected markers. In particular, differentiating between a pinch and a right click initially resulted in false detections. This was solved by introducing geometric constraints based on the previous finger positions and distance between markers before they merged.
+
+Some of the parameters proposed in the paper were removed after initial testing. Requiring the merged marker to shrink 20% of its original size before recognizing a pinch proved difficult to with consistency so it was removed. The original five-second delay for a double click was also reduced to one second to create a faster and more natural interaction. There was also an addition of cursor smoothing and a tracking margin to improve usability.
+
+Although the implementation performs reliably under normal conditions, several limitations remain. The system depends on colored markers and cannot recognize bare hands. Tracking accuracy is heavily influenced by the lighting conditions, objects in the background with similar color can also cause and effect. The colored trackers must always be visible for the gesture recognition to work.
+
+There is also potential for future improvements and extensions. The system could be expanded to support a wider range of interaction and more complex gestures than the predefined set. However, achieving a more advanced and reliable gesture recognition would likely require a more complex approach, such as integrating machine learning techniques or using additional hardware sensors.
+
+In conclusion, we can say the this project demonstrates that a hand-gesture mouse can be implemented using only a webcam and standard computer vision techniques.
